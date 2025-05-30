@@ -5,7 +5,7 @@ export default defineEventHandler(async (event) => {
   // The server/middleware/auth.ts should have already run.
   // If the user is authenticated, event.context.user will be populated.
   // If not, the auth middleware would have thrown a 401 error for API routes.
-
+  
   if (!event.context.user) {
     // This case should ideally be caught by the main auth middleware for API routes.
     // However, having an explicit check here is a safeguard.

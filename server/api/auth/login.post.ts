@@ -63,7 +63,7 @@ export default defineEventHandler(async (event) => {
       maxAge: 60 * 60 * 24, // 1 day in seconds
       path: '/', // Cookie available for all paths
     });
-
+    
     // Also return user info (excluding password and token, as token is in cookie)
     const { password: _, ...userWithoutPassword } = user;
 
@@ -71,7 +71,7 @@ export default defineEventHandler(async (event) => {
       message: 'Login successful',
       user: userWithoutPassword,
       // Optionally, you could return the token here too if not using cookies exclusively
-      // token: token
+      // token: token 
     };
 
   } catch (error: any) {

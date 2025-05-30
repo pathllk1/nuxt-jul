@@ -113,7 +113,7 @@ async function handleRegister() {
 
     // console.log('Registration successful:', response);
     successMessage.value = response.message || 'Registration successful! Please log in.';
-
+    
     // Clear form
     username.value = '';
     email.value = '';

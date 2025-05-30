@@ -41,7 +41,7 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
       const data = await $fetch<{ user: User }>('/api/users/me', {
         headers: useRequestHeaders(['cookie']) as HeadersInit,
       });
-
+      
       if (!data.user) { // Should not happen if /api/users/me is hit after server auth middleware
         return navigateTo('/login?redirect=' + encodeURIComponent(to.fullPath));
       }
@@ -68,7 +68,7 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
     if (!currentUser) { // Not logged in
       return navigateTo('/login?redirect=' + encodeURIComponent(to.fullPath));
     }
-
+    
     if (currentUser.role !== 'admin') { // Logged in, but not an admin
       return showError({ statusCode: 403, statusMessage: 'Forbidden: Access is restricted to administrators.' });
       // Or navigateTo('/unauthorized') or navigateTo('/')

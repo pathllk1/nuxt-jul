@@ -6,7 +6,7 @@ import { cwd } from 'process';
 
 // Define the path for the database file
 // Store it in the .nuxt directory or project root for simplicity during development
-const DB_PATH = join(cwd(), '.nuxt', 'app.db');
+const DB_PATH = join(cwd(), '.nuxt', 'app.db'); 
 // Ensure .nuxt directory is in .gitignore if not already
 
 let db: Awaited<ReturnType<typeof open>>;
@@ -18,7 +18,7 @@ export async function initializeDatabase() {
 
   // Use verbose mode for more detailed logging during development
   const sqlite3Verbose = sqlite3.verbose();
-
+  
   db = await open({
     filename: DB_PATH,
     driver: sqlite3Verbose.Database
@@ -46,7 +46,7 @@ export async function initializeDatabase() {
   // For security, admin password should be handled carefully, e.g. from env vars.
   const adminEmail = 'admin@example.com';
   const existingAdmin = await db.get('SELECT * FROM users WHERE email = ? AND role = ?', [adminEmail, 'admin']);
-
+  
   if (!existingAdmin) {
     const bcrypt = await import('bcryptjs'); // Dynamically import bcryptjs
     const adminPassword = 'adminpassword'; // Replace with a secure password, ideally from env

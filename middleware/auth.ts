@@ -53,7 +53,7 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
   } else {
     // Client-side: use our placeholder composable
     const { isLoggedIn, fetchUser } = useAuthClient();
-
+    
     if (!isLoggedIn.value) {
         // Attempt to fetch user. If successful, isLoggedIn will become true.
         // If not, then redirect.

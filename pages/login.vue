@@ -72,6 +72,15 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useRouter } from 'vue-router'; // Or useNuxtApp().$router for Nuxt 3
+import { useState } from '#app'; // Import useState
+
+// Define User interface
+interface User {
+  id: number;
+  username: string;
+  email: string;
+  role: 'user' | 'admin';
+}
 
 const email = ref('');
 const password = ref('');
@@ -79,18 +88,21 @@ const errorMessage = ref('');
 const isLoading = ref(false);
 
 const router = useRouter(); // Nuxt 3: const router = useRouter(); is correct.
-
-// Define a composable for auth state if not already (for later steps)
-// For now, we'll just handle login directly.
-// const auth = useAuth(); // Example if an auth composable exists
+const userAuthState = useState<User | null>('user_auth_state', () => null); // Define userAuthState
 
 async function handleLogin() {
   isLoading.value = true;
   errorMessage.value = '';
 
   try {
-    // Using $fetch utility from Nuxt 3
-    const response = await $fetch('/api/auth/login', {
+    // Define expected response structure
+    interface LoginResponse {
+      message: string;
+      user: User; 
+      // token?: string; // If token were returned in body
+    }
+
+    const response = await $fetch<LoginResponse>('/api/auth/login', {
       method: 'POST',
       body: {
         email: email.value,
@@ -98,15 +110,20 @@ async function handleLogin() {
       },
     });
 
-    // Assuming the API returns user data on success and sets an HttpOnly cookie for the token
     // console.log('Login successful:', response);
 
-    // If using a client-side auth state (e.g., Pinia or useState)
-    // you would set the user state here. For example:
-    // auth.setUser(response.user); // If 'auth' is a store/composable
+    // ** CRUCIAL FIX: Update client-side auth state **
+    if (response && response.user) {
+      userAuthState.value = response.user;
+    } else {
+      // This case should ideally not happen if API guarantees user object on success
+      console.error('Login response did not include user data.');
+      errorMessage.value = 'Login succeeded but user data was not received. Please try again.';
+      isLoading.value = false; // Stop loading before early return
+      return; 
+    }
 
-    // Redirect to a protected page, e.g., dashboard
-    router.push('/dashboard');
+    router.push('/dashboard'); 
 
   } catch (error: any) {
     console.error('Login failed:', error);
@@ -116,7 +133,9 @@ async function handleLogin() {
       errorMessage.value = 'An unexpected error occurred. Please try again.';
     }
   } finally {
-    isLoading.value = false;
+    // isLoading is already set to false in the original code,
+    // but ensure it's always set if there's an early return in the try block.
+    isLoading.value = false; 
   }
 }
 

@@ -20,7 +20,7 @@ export function hasRole(event: H3Event, role: UserRole | UserRole[]): boolean {
   if (Array.isArray(role)) {
     return role.includes(user.role as UserRole);
   }
-
+  
   return user.role === role;
 }
 

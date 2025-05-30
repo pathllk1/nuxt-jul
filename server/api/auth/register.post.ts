@@ -67,14 +67,14 @@ export default defineEventHandler(async (event) => {
     // 5. Return success (excluding password)
     // It's good practice to refetch the user to ensure you get the default values (like ID, role)
     const newUser = await db.get('SELECT id, username, email, role FROM users WHERE id = ?', [result.lastID]);
-
+    
     if (!newUser) {
         throw createError({
             statusCode: 500,
             statusMessage: 'Failed to register user: Could not retrieve new user'
         });
     }
-
+    
     return {
       message: 'User registered successfully',
       user: newUser,

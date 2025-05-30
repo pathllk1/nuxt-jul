@@ -9,11 +9,11 @@
       <h2 class="text-2xl font-semibold text-gray-700 mb-4">Welcome, {{ userData.username }}!</h2>
       <p class="text-gray-600"><span class="font-medium">Email:</span> {{ userData.email }}</p>
       <p class="text-gray-600"><span class="font-medium">Role:</span> <span class="capitalize">{{ userData.role }}</span></p>
-
+      
       <!-- Add more dashboard content here -->
       <div class="mt-6">
-        <button
-          @click="handleLogout"
+        <button 
+          @click="handleLogout" 
           class="px-4 py-2 bg-red-500 text-white font-medium rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
         >
           Logout
@@ -43,7 +43,7 @@ const router = useRouter();
 
 // Placeholder for client-side auth state management
 // This would be part of the useAuthClient() or a Pinia store
-const authState = useState<object | null>('user_auth_state', () => null);
+const authState = useState<object | null>('user_auth_state', () => null); 
 
 async function fetchDashboardData() {
   isLoading.value = true;
@@ -78,7 +78,7 @@ async function handleLogout() {
     console.error('Logout API call failed (ignoring, proceeding with client logout):', e);
   } finally {
     // Clear client-side auth state
-    authState.value = null;
+    authState.value = null; 
     // Remove cookie (not directly possible for HttpOnly from client JS)
     // The server logout should handle cookie invalidation if needed.
     // For client-side, we just redirect.
