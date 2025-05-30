@@ -58,6 +58,7 @@ nav {
 }
 .brand a {
   padding: 0.5rem 0; /* Adjust if 'a' has global padding */
+  color: white; /* Set brand link color to white */
 }
 .brand a:hover {
   background-color: transparent; /* Brand link might not need hover bg */
