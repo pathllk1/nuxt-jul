@@ -1,7 +1,9 @@
 <template>
-  <div style="padding-top: 60px;"> <!-- Adjust 60px based on actual navbar height -->
+  <div> <!-- Removed inline style -->
     <Navbar />
-    <NuxtPage />
+    <main> <!-- Optional: wrap NuxtPage in main for semantic HTML -->
+      <NuxtPage />
+    </main>
   </div>
 </template>
 
