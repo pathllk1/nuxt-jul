@@ -4,7 +4,7 @@
     <div class="bg-white p-6 rounded-lg shadow-md">
       <h2 class="text-2xl font-semibold text-gray-700 mb-4">Welcome, Administrator!</h2>
       <p class="text-gray-600">This page is only accessible to users with the 'admin' role.</p>
-      
+
       <div v-if="adminData" class="mt-4">
         <p>Your admin user ID is: {{ adminData.id }}</p>
         <p>Your admin username is: {{ adminData.username }}</p>

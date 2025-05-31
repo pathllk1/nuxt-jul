@@ -2,7 +2,7 @@
 import { defineEventHandler, getCookie, createError } from 'h3';
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-very-secret-jwt-key-for-dev'; 
+const JWT_SECRET = process.env.JWT_SECRET || 'your-very-secret-jwt-key-for-dev';
 // Ensure this matches the one in login.post.ts
 
 interface UserPayload {

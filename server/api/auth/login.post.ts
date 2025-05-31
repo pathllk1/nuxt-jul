@@ -3,85 +3,91 @@ import { defineEventHandler, readBody, createError, setCookie } from 'h3';
 import { getDb } from '~/server/utils/database';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { randomBytes } from 'crypto'; // For generating refresh token
 
-// Ensure you have a JWT_SECRET in your environment or a default for development
+// --- Token Configuration ---
+// Access Token: Short-lived, for accessing resources
+const ACCESS_TOKEN_TTL_SECONDS = parseInt(process.env.ACCESS_TOKEN_TTL_SECONDS || '900'); // Default 15 minutes
 const JWT_SECRET = process.env.JWT_SECRET || 'your-very-secret-jwt-key-for-dev';
-// TODO: Add JWT_SECRET to .env for production and inform user.
+
+// Refresh Token: Long-lived, for obtaining new access tokens
+const REFRESH_TOKEN_TTL_SECONDS = parseInt(process.env.REFRESH_TOKEN_TTL_SECONDS || '604800'); // Default 7 days
+// Note: Refresh tokens are typically opaque strings and not JWTs themselves,
+// but could be JWTs if you need them to be self-contained and verifiable without DB lookup for some checks.
+// For this implementation, we'll generate a secure random string for the refresh token.
 
 export default defineEventHandler(async (event) => {
   const body = await readBody(event);
-  const { email, password } = body; // Or username, if you want to allow login with username
+  const { email, password } = body;
 
-  // 1. Validate input
   if (!email || !password) {
-    throw createError({
-      statusCode: 400,
-      statusMessage: 'Missing email or password',
-    });
+    throw createError({ statusCode: 400, statusMessage: 'Missing email or password' });
   }
 
   const db = await getDb();
 
   try {
-    // 2. Find user by email
     const user = await db.get('SELECT * FROM users WHERE email = ?', [email]);
-
     if (!user) {
-      throw createError({
-        statusCode: 401, // Unauthorized
-        statusMessage: 'Invalid credentials', // Generic message for security
-      });
+      throw createError({ statusCode: 401, statusMessage: 'Invalid credentials' });
     }
 
-    // 3. Compare password with stored hash
     const isPasswordValid = await bcrypt.compare(password, user.password);
-
     if (!isPasswordValid) {
-      throw createError({
-        statusCode: 401, // Unauthorized
-        statusMessage: 'Invalid credentials', // Generic message
-      });
+      throw createError({ statusCode: 401, statusMessage: 'Invalid credentials' });
     }
 
-    // 4. Generate JWT
-    const tokenPayload = {
+    // --- Generate Access Token (JWT) ---
+    const accessTokenPayload = {
       id: user.id,
       username: user.username,
       email: user.email,
       role: user.role,
     };
-
-    const token = jwt.sign(tokenPayload, JWT_SECRET, {
-      expiresIn: '1d', // Token expiration (e.g., 1 day, 7d, 1h)
+    const accessToken = jwt.sign(accessTokenPayload, JWT_SECRET, {
+      expiresIn: ACCESS_TOKEN_TTL_SECONDS,
     });
 
-    // 5. Set JWT in an HTTPOnly cookie (more secure than local storage)
-    setCookie(event, 'auth_token', token, {
+    // --- Generate Refresh Token (Secure Random String) ---
+    const refreshToken = randomBytes(64).toString('hex');
+    const refreshTokenExpiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_SECONDS * 1000);
+
+    // --- Store Refresh Token in Database ---
+    await db.run(
+      'UPDATE users SET refresh_token = ?, refresh_token_expires_at = ? WHERE id = ?',
+      [refreshToken, refreshTokenExpiresAt.toISOString(), user.id]
+    );
+
+    // --- Set Cookies ---
+    // Access Token Cookie
+    setCookie(event, 'auth_token', accessToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
-      sameSite: 'lax', // Or 'strict'
-      maxAge: 60 * 60 * 24, // 1 day in seconds
-      path: '/', // Cookie available for all paths
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: ACCESS_TOKEN_TTL_SECONDS, // MaxAge should match token expiry
+      path: '/',
     });
-    
-    // Also return user info (excluding password and token, as token is in cookie)
-    const { password: _, ...userWithoutPassword } = user;
+
+    // Refresh Token Cookie
+    setCookie(event, 'refresh_auth_token', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax', // Consider 'strict' if appropriate for your app
+      maxAge: REFRESH_TOKEN_TTL_SECONDS, // MaxAge should match token expiry
+      path: '/', // Typically same path, or a more specific one like /api/auth/refresh
+    });
+
+    const { password: _, refresh_token: __, refresh_token_expires_at: ___, ...userWithoutSensitiveData } = user;
 
     return {
       message: 'Login successful',
-      user: userWithoutPassword,
-      // Optionally, you could return the token here too if not using cookies exclusively
-      // token: token 
+      user: userWithoutSensitiveData, // Return user data (excluding sensitive fields)
+      // Tokens are not returned in the body as they are in HttpOnly cookies
     };
 
   } catch (error: any) {
     console.error('Login Error:', error);
-    if (error.statusCode) {
-      throw error;
-    }
-    throw createError({
-      statusCode: 500,
-      statusMessage: 'An unexpected error occurred during login.',
-    });
+    if (error.statusCode) throw error;
+    throw createError({ statusCode: 500, statusMessage: 'An unexpected error occurred during login.' });
   }
 });

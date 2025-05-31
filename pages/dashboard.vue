@@ -9,11 +9,11 @@
       <h2 class="text-2xl font-semibold text-gray-700 mb-4">Welcome, {{ userData.username }}!</h2>
       <p class="text-gray-600"><span class="font-medium">Email:</span> {{ userData.email }}</p>
       <p class="text-gray-600"><span class="font-medium">Role:</span> <span class="capitalize">{{ userData.role }}</span></p>
-      
+
       <!-- Add more dashboard content here -->
       <div class="mt-6">
-        <button 
-          @click="handleLogout" 
+        <button
+          @click="handleLogout"
           class="px-4 py-2 bg-red-500 text-white font-medium rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
         >
           Logout
@@ -36,35 +36,41 @@ definePageMeta({
   layout: 'default',
 });
 
-const userData = ref<any>(null); // Replace 'any' with a proper User type later
+// Define User type locally if not globally available
+interface User {
+  id: number;
+  username: string;
+  email: string;
+  role: 'user' | 'admin';
+}
+
+const userData = ref<User | null>(null);
 const isLoading = ref(true);
 const error = ref<string | null>(null);
 const router = useRouter();
 
 // Placeholder for client-side auth state management
-// This would be part of the useAuthClient() or a Pinia store
-const authState = useState<object | null>('user_auth_state', () => null); 
+const authState = useState<User | null>('user_auth_state', () => null);
 
 async function fetchDashboardData() {
   isLoading.value = true;
   error.value = null;
   try {
-    // Attempt to get user data from the /api/users/me endpoint
-    // This endpoint is protected by our server middleware
-    const response = await $fetch('/api/users/me', {
-      // Headers might not be needed here if cookie is properly sent by browser
-      // but can be included for consistency or if issues arise.
-      // headers: useRequestHeaders(['cookie']) as HeadersInit, // Usually for server-side fetches
-    });
+    // Use the new composable
+    // useApiFetch should be auto-imported by Nuxt from '~/composables/useApiFetch'
+    const response = await useApiFetch<{ user: User }>('/api/users/me');
     userData.value = response.user;
-    authState.value = response.user; // Update our placeholder auth state
+    authState.value = response.user;
   } catch (err: any) {
-    console.error('Failed to fetch dashboard data:', err);
-    error.value = err.data?.message || err.message || 'Could not load user data.';
-    // If unauthorized, the 'auth' middleware should ideally redirect.
-    // But if for some reason it doesn't, or token expires mid-session:
-    if (err.response?.status === 401) {
-        setTimeout(() => router.push('/login'), 2000);
+    console.error('Failed to fetch dashboard data with useApiFetch:', err);
+    error.value = err.data?.statusMessage || err.message || 'Could not load user data. Please try logging in again.';
+
+    // useApiFetch should throw an error that leads to logout if refresh fails.
+    // The page middleware should also protect against direct access if auth state is cleared.
+    // If err.statusCode is 401 (from createError in useApiFetch), it means session is truly over.
+    if (err.statusCode === 401) {
+        // Optional: A small delay before redirect might allow user to see message.
+        setTimeout(() => router.push('/login'), 1000);
     }
   } finally {
     isLoading.value = false;
@@ -78,7 +84,7 @@ async function handleLogout() {
     console.error('Logout API call failed (ignoring, proceeding with client logout):', e);
   } finally {
     // Clear client-side auth state
-    authState.value = null; 
+    authState.value = null;
     // Remove cookie (not directly possible for HttpOnly from client JS)
     // The server logout should handle cookie invalidation if needed.
     // For client-side, we just redirect.

@@ -98,7 +98,7 @@ async function handleLogin() {
     // Define expected response structure
     interface LoginResponse {
       message: string;
-      user: User; 
+      user: User;
       // token?: string; // If token were returned in body
     }
 
@@ -120,10 +120,10 @@ async function handleLogin() {
       console.error('Login response did not include user data.');
       errorMessage.value = 'Login succeeded but user data was not received. Please try again.';
       isLoading.value = false; // Stop loading before early return
-      return; 
+      return;
     }
 
-    router.push('/dashboard'); 
+    router.push('/dashboard');
 
   } catch (error: any) {
     console.error('Login failed:', error);
@@ -135,7 +135,7 @@ async function handleLogin() {
   } finally {
     // isLoading is already set to false in the original code,
     // but ensure it's always set if there's an early return in the try block.
-    isLoading.value = false; 
+    isLoading.value = false;
   }
 }
 

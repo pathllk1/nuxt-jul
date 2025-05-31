@@ -1,82 +1,91 @@
 // server/utils/database.ts
 import sqlite3 from 'sqlite3';
-import { open } from 'sqlite'; // 'sqlite' is a wrapper for sqlite3 that provides promise-based API
+import { open, Database } from 'sqlite'; // Ensure Database type is imported
 import { join } from 'path';
 import { cwd } from 'process';
 
-// Define the path for the database file
-// Store it in the .nuxt directory or project root for simplicity during development
-const DB_PATH = join(cwd(), '.nuxt', 'app.db'); 
-// Ensure .nuxt directory is in .gitignore if not already
+const DB_PATH = join(cwd(), '.nuxt', 'app.db');
+let dbInstance: Database; // Renamed 'db' to 'dbInstance'
 
-let db: Awaited<ReturnType<typeof open>>;
+async function columnExists(db: Database, tableName: string, columnName: string): Promise<boolean> {
+  // PRAGMA table_info returns column information.
+  const columns = await db.all(`PRAGMA table_info(${tableName})`);
+  return columns.some(col => col.name === columnName);
+}
 
 export async function initializeDatabase() {
-  if (db) {
-    return db;
+  if (dbInstance) {
+    return dbInstance;
   }
 
-  // Use verbose mode for more detailed logging during development
   const sqlite3Verbose = sqlite3.verbose();
-  
-  db = await open({
+  dbInstance = await open({
     filename: DB_PATH,
     driver: sqlite3Verbose.Database
   });
 
   console.log('Database connected at', DB_PATH);
 
-  // Define User table schema
-  // SQL for creating the users table
+  // Schema migration: Check and add new columns if they don't exist
+  const usersTableExists = await dbInstance.get("SELECT name FROM sqlite_master WHERE type='table' AND name='users'");
+
+  if (usersTableExists) {
+    if (!await columnExists(dbInstance, 'users', 'refresh_token')) {
+      await dbInstance.exec('ALTER TABLE users ADD COLUMN refresh_token TEXT');
+      console.log('Column refresh_token added to users table.');
+    }
+    if (!await columnExists(dbInstance, 'users', 'refresh_token_expires_at')) {
+      await dbInstance.exec('ALTER TABLE users ADD COLUMN refresh_token_expires_at DATETIME');
+      console.log('Column refresh_token_expires_at added to users table.');
+    }
+  }
+
   const createUserTableSQL = `
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       username TEXT UNIQUE NOT NULL,
       email TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'admin'))
+      role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('user', 'admin')),
+      refresh_token TEXT,
+      refresh_token_expires_at DATETIME
     );
   `;
+  await dbInstance.exec(createUserTableSQL);
+  console.log('Users table ensured (created or already exists with new columns).');
 
-  await db.exec(createUserTableSQL);
-  console.log('Users table created or already exists.');
-
-  // Example: Ensure an admin user exists (for testing purposes)
-  // This is a good place for initial data seeding if needed.
-  // For security, admin password should be handled carefully, e.g. from env vars.
+  // Admin user seeding logic
   const adminEmail = 'admin@example.com';
-  const existingAdmin = await db.get('SELECT * FROM users WHERE email = ? AND role = ?', [adminEmail, 'admin']);
-  
+  // Check by email only for existence, as username might change or not be 'admin' if customized
+  const existingAdmin = await dbInstance.get('SELECT id FROM users WHERE email = ? AND role = ?', [adminEmail, 'admin']);
+
   if (!existingAdmin) {
-    const bcrypt = await import('bcryptjs'); // Dynamically import bcryptjs
-    const adminPassword = 'adminpassword'; // Replace with a secure password, ideally from env
+    const bcrypt = await import('bcryptjs');
+    // Use a more secure way to get initial admin password in real apps
+    const adminPassword = process.env.ADMIN_INITIAL_PASSWORD || 'adminpassword';
     const hashedPassword = await bcrypt.hash(adminPassword, 10);
     try {
-        await db.run(
+        // Ensure admin username is unique if it's also 'admin', or use a different one
+        await dbInstance.run(
             'INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)',
             'admin', adminEmail, hashedPassword, 'admin'
         );
         console.log('Default admin user created.');
     } catch (error: any) {
-        if (error.message.includes('UNIQUE constraint failed')) {
-            console.log('Admin user with this username/email already exists.');
+        // Check for UNIQUE constraint failure for username or email specifically
+        if (error.message && error.message.includes('UNIQUE constraint failed')) {
+            // console.log('Admin user with this username or email already exists.');
         } else {
             console.error('Error creating default admin user:', error);
         }
     }
   }
-
-  return db;
+  return dbInstance;
 }
 
-// Function to get the database instance
 export async function getDb() {
-  if (!db) {
+  if (!dbInstance) {
     return await initializeDatabase();
   }
-  return db;
+  return dbInstance;
 }
-
-// Optional: Call initializeDatabase on module load so it runs when server starts
-// However, for Nuxt server routes, it's better to call getDb() when needed.
-// initializeDatabase().catch(console.error);

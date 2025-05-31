@@ -24,13 +24,13 @@
       <!-- Navigation Links -->
       <ul :class="[isMobileMenuOpen ? 'block absolute top-16 left-0 w-full bg-indigo-700 md:hidden z-40 py-2' : 'hidden', 'md:flex md:items-center md:space-x-2 md:static md:w-auto md:bg-transparent']">
         <li><NuxtLink to="/" @click="closeMobileMenuIfNeeded" class="block md:inline-block px-3 py-2 rounded-md text-base font-medium hover:bg-indigo-500 w-full md:w-auto text-center md:text-left">Home</NuxtLink></li>
-        
+
         <!-- Unauthenticated User Links -->
         <template v-if="!isLoggedIn">
           <li><NuxtLink to="/login" @click="closeMobileMenuIfNeeded" class="block md:inline-block px-3 py-2 rounded-md text-base font-medium hover:bg-indigo-500 w-full md:w-auto text-center md:text-left">Login</NuxtLink></li>
           <li><NuxtLink to="/register" @click="closeMobileMenuIfNeeded" class="block md:inline-block px-3 py-2 rounded-md text-base font-medium hover:bg-indigo-500 w-full md:w-auto text-center md:text-left">Register</NuxtLink></li>
         </template>
-        
+
         <!-- Authenticated User Links -->
         <template v-else>
           <li><NuxtLink to="/dashboard" @click="closeMobileMenuIfNeeded" class="block md:inline-block px-3 py-2 rounded-md text-base font-medium hover:bg-indigo-500 w-full md:w-auto text-center md:text-left">Dashboard</NuxtLink></li>

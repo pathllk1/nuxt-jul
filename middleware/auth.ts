@@ -1,26 +1,35 @@
 // middleware/auth.ts
 import { defineNuxtRouteMiddleware, navigateTo } from '#app'; // Nuxt 3 imports
 
+// Define User interface locally or import if global
+interface User {
+  id: number;
+  username: string;
+  email: string;
+  role: 'user' | 'admin';
+}
+
 // Placeholder for a client-side auth state/store.
-// In a real app, this would come from Pinia, useState, or a dedicated auth library.
 function useAuthClient() {
   // This is a simplified placeholder.
-  // It would typically check a ref/reactive variable set after login.
-  // For now, we'll assume if there's no immediate client state, we need to verify with API.
-  // This composable would be more fleshed out in step 10.
-  const user = useState<object | null>('user_auth_state', () => null); // Placeholder
+  const user = useState<User | null>('user_auth_state', () => null);
   return {
     isLoggedIn: computed(() => !!user.value),
     user, // The user data
     fetchUser: async () => { // Function to fetch user if not in state
         if (user.value) return user.value;
         try {
-            const data = await $fetch('/api/users/me', {
-                headers: useRequestHeaders(['cookie']) as HeadersInit, // Important for SSR/initial load
-            });
-            user.value = data.user;
-            return data.user;
-        } catch (e) {
+            // Use the new composable
+            // useApiFetch should be auto-imported
+            const data = await useApiFetch<{ user: User }>('/api/users/me');
+            if (data && data.user) {
+                user.value = data.user;
+                return data.user;
+            }
+            user.value = null;
+            return null;
+        } catch (e: any) {
+            // console.error('auth.ts middleware: fetchUser failed with useApiFetch', e.message);
             user.value = null;
             return null;
         }
@@ -53,7 +62,7 @@ export default defineNuxtRouteMiddleware(async (to, from) => {
   } else {
     // Client-side: use our placeholder composable
     const { isLoggedIn, fetchUser } = useAuthClient();
-    
+
     if (!isLoggedIn.value) {
         // Attempt to fetch user. If successful, isLoggedIn will become true.
         // If not, then redirect.
