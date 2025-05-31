@@ -1,101 +1,103 @@
 // composables/useApiFetch.ts
-import { type UseFetchOptions } from '#app'; // Nuxt 3 types for options consistency
-import { $fetch } from 'ofetch'; // ofetch is the underlying fetch library Nuxt uses
-import { createError, useState } from '#app'; // Nuxt composables, useRouter removed as it's not used
+import { type UseFetchOptions, createError, useRouter, useState } from '#app';
+import { $fetch } from 'ofetch'; // Or import { ofetch } from 'ofetch';
 
-// Define AuthUser interface (consistent with login page)
-export interface AuthUser { // Export if it were to be shared, local for now
+// Define AuthUser interface (ensure it's consistent)
+interface AuthUser {
   id: number;
   username: string;
   email: string;
   role: 'user' | 'admin';
-  accessTokenExpiresAt?: number | null; // Milliseconds UTC
+  accessTokenExpiresAt?: number | null;
 }
 
-// Shared auth state
-const userAuthState = useState<AuthUser | null>('user_auth_state', () => null);
-
-// Variable to prevent multiple concurrent refresh attempts
+// Module-scoped variables for global refresh lock mechanism
 let isRefreshing = false;
-// Queue for requests that came in while token was refreshing
-// This is a simplified promise that resolves when refreshing is done, allowing retry.
 let refreshPromise: Promise<void> | null = null;
 
+export function useApiFetch() { // This is the main composable function
+  // Nuxt composables like useState and useRouter are called inside here,
+  // ensuring they execute within a valid Nuxt context when useApiFetch() is called.
+  const userAuthState = useState<AuthUser | null>('user_auth_state', () => null);
+  const router = useRouter(); // This is now correctly scoped.
 
-export function useApiFetch<DataT = unknown>(
-  path: string,
-  options: UseFetchOptions<DataT> = {}
-) {
-  // const router = useRouter(); // Avoid using router directly in low-level composable for navigation
-
-  const customFetch = async <T = DataT>(
+  const customFetch = async <T>(
     currentPath: string,
-    currentOptions: UseFetchOptions<T>
+    currentOptions: UseFetchOptions<T> = {} // Provide default for options
   ): Promise<T> => {
     try {
-      // @ts-ignore: currentOptions might not perfectly match ofetch options but generally compatible
+      // @ts-ignore // currentOptions might not perfectly match $fetch options type, but usually compatible
       return await $fetch<T>(currentPath, currentOptions);
     } catch (error: any) {
       if (error.response && error.response.status === 401) {
         if (!isRefreshing) {
           isRefreshing = true;
+          // Create the refresh promise
           refreshPromise = (async () => {
             try {
-              // console.log(`Attempting token refresh due to 401 on ${currentPath}...`);
-              interface RefreshResponse {
-                message: string;
-                newAccessTokenExpiresAt: number;
-              }
-              const refreshResponse = await $fetch<RefreshResponse>('/api/auth/refresh', { method: 'POST' });
-              // console.log('Token refresh successful.');
+              // console.log('useApiFetch: Attempting token refresh...');
+              const refreshResponse = await $fetch<{ newAccessTokenExpiresAt: number }>('/api/auth/refresh', { method: 'POST' });
               if (userAuthState.value && typeof refreshResponse.newAccessTokenExpiresAt === 'number') {
                 userAuthState.value.accessTokenExpiresAt = refreshResponse.newAccessTokenExpiresAt;
               }
-            } catch (refreshError: any) {
-              // console.error('Token refresh failed:', refreshError);
-              userAuthState.value = null; // Clear auth state (user and expiry)
-              // router.push('/login'); // Avoid navigation side-effects
-              throw createError({ statusCode: 401, statusMessage: 'Session expired. Please log in again.', fatal: false, data: refreshError });
+              // console.log('useApiFetch: Token refresh successful.');
+            } catch (e: any) {
+              // console.error('useApiFetch: Token refresh failed.', e);
+              userAuthState.value = null; // Clear auth state
+              // Do not navigate from here, throw an error that page/middleware can catch
+              throw createError({
+                statusCode: 401,
+                statusMessage: 'Session expired. Please log in again.',
+                fatal: false, // Not fatal for client-side, page can handle redirect
+                data: e
+              });
             } finally {
               isRefreshing = false;
-              refreshPromise = null; // Clear the promise
+              // Don't nullify refreshPromise here, let awaiters finish with it.
+              // It will be overwritten if a new refresh starts.
             }
           })();
         }
 
-        // Wait for the refresh attempt to complete if it's already in progress by another call
-        if (refreshPromise) {
-            try {
-                await refreshPromise; // This ensures that the refresh logic (including setting new expiry) has completed
-                 // Retry the original request with the new token (cookie should be updated)
-                // console.log(`Retrying original request to ${currentPath} after refresh.`);
-                // @ts-ignore
-                return await $fetch<T>(currentPath, currentOptions);
-            } catch (retryError: any) { // This catch is for errors from await refreshPromise or the subsequent $fetch
-                 // If refreshPromise threw (e.g. refresh failed), it's already a createError from above.
-                // console.error(`Retry failed for ${currentPath} after token refresh attempt:`, retryError);
-                // If it's the specific error from refreshPromise, it's already a createError
-                if (retryError.statusCode === 401 && retryError.message === 'Session expired. Please log in again.') {
-                    throw retryError;
-                }
-                // Otherwise, throw a new one or the original error.
-                throw createError({ statusCode: 401, statusMessage: 'Session expired or invalid after refresh. Please log in again.', fatal: false, data: retryError });
+        // All requests (the one that got 401, and any subsequent ones while refreshing)
+        // will await the current refreshPromise.
+        try {
+          await refreshPromise;
+          // Once refreshPromise resolves (successfully, otherwise it throws), retry original request.
+          // The cookie should have been updated by the /api/auth/refresh call.
+          // console.log(`useApiFetch: Retrying request to ${currentPath} after refresh.`);
+          // @ts-ignore
+          return await $fetch<T>(currentPath, currentOptions);
+        } catch (e) { // Catches error from refreshPromise or from the retried $fetch
+          // console.error(`useApiFetch: Error after token refresh or during retry for ${currentPath}:`, e);
+          // If the error is the specific 401 we throw from refresh failure, rethrow it.
+          if (e instanceof Error && (e as any).statusCode === 401 && (e as any).message === 'Session expired. Please log in again.') {
+            throw e;
+          }
+          // For other errors (e.g. retry still fails, or different error from refreshPromise), wrap or rethrow.
+          throw createError({
+            statusCode: (e as any).response?.status || 500, // Use error status if available
+            statusMessage: (e as any).message || 'An error occurred after attempting token refresh.',
+            data: e
+          });
+        } finally {
+            // If this was the request that initiated the refresh, and it's now done (success or fail for retry)
+            // we can consider clearing the promise if no other request is waiting for THIS specific promise.
+            // This part is tricky. For now, refreshPromise is overwritten if a new refresh starts.
+            // If isRefreshing is false, it means the refresh cycle (including potential retries for the first request) is over.
+            if (!isRefreshing && refreshPromise !== null) { // Check if it's the same promise that just completed
+                // To prevent clearing a new promise if another request initiated one in a race condition
+                // This logic for clearing refreshPromise needs to be very careful.
+                // The simplest is to let it be overwritten by a new refresh cycle.
             }
-        } else {
-            // This case should ideally not be hit if refreshPromise logic is sound.
-            // Fallback if isRefreshing was true but refreshPromise was null (should not happen).
-            throw error;
         }
-
       }
-      throw error; // Propagate other errors
+      // For non-401 errors, just rethrow
+      throw error;
     }
   };
 
-  // Merge options - for now, we're not adding many defaults here as $fetch handles cookies.
-  // Options like headers (e.g., 'Content-Type': 'application/json') could be defaulted here.
-  const mergedOptions = { ...options };
-
-  // The composable returns a promise from customFetch directly
-  return customFetch(path, mergedOptions);
+  // The composable `useApiFetch()` returns the actual `customFetch` function.
+  // Usage: const apiFetch = useApiFetch(); const data = await apiFetch('/some/path');
+  return customFetch;
 }
