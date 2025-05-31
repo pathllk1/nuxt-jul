@@ -1,18 +1,19 @@
 // composables/useApiFetch.ts
 import { type UseFetchOptions } from '#app'; // Nuxt 3 types for options consistency
 import { $fetch } from 'ofetch'; // ofetch is the underlying fetch library Nuxt uses
-import { createError, useState, useRouter } from '#app'; // Nuxt composables
+import { createError, useState } from '#app'; // Nuxt composables, useRouter removed as it's not used
 
-// Define User type (can be imported from a central types file if available)
-interface User {
+// Define AuthUser interface (consistent with login page)
+export interface AuthUser { // Export if it were to be shared, local for now
   id: number;
   username: string;
   email: string;
   role: 'user' | 'admin';
+  accessTokenExpiresAt?: number | null; // Milliseconds UTC
 }
 
 // Shared auth state
-const userAuthState = useState<User | null>('user_auth_state', () => null);
+const userAuthState = useState<AuthUser | null>('user_auth_state', () => null);
 
 // Variable to prevent multiple concurrent refresh attempts
 let isRefreshing = false;
@@ -41,11 +42,18 @@ export function useApiFetch<DataT = unknown>(
           refreshPromise = (async () => {
             try {
               // console.log(`Attempting token refresh due to 401 on ${currentPath}...`);
-              await $fetch('/api/auth/refresh', { method: 'POST' });
+              interface RefreshResponse {
+                message: string;
+                newAccessTokenExpiresAt: number;
+              }
+              const refreshResponse = await $fetch<RefreshResponse>('/api/auth/refresh', { method: 'POST' });
               // console.log('Token refresh successful.');
+              if (userAuthState.value && typeof refreshResponse.newAccessTokenExpiresAt === 'number') {
+                userAuthState.value.accessTokenExpiresAt = refreshResponse.newAccessTokenExpiresAt;
+              }
             } catch (refreshError: any) {
               // console.error('Token refresh failed:', refreshError);
-              userAuthState.value = null; // Clear auth state
+              userAuthState.value = null; // Clear auth state (user and expiry)
               // router.push('/login'); // Avoid navigation side-effects
               throw createError({ statusCode: 401, statusMessage: 'Session expired. Please log in again.', fatal: false, data: refreshError });
             } finally {
@@ -58,13 +66,13 @@ export function useApiFetch<DataT = unknown>(
         // Wait for the refresh attempt to complete if it's already in progress by another call
         if (refreshPromise) {
             try {
-                await refreshPromise;
+                await refreshPromise; // This ensures that the refresh logic (including setting new expiry) has completed
                  // Retry the original request with the new token (cookie should be updated)
                 // console.log(`Retrying original request to ${currentPath} after refresh.`);
                 // @ts-ignore
                 return await $fetch<T>(currentPath, currentOptions);
-            } catch (retryError: any) {
-                 // If refreshPromise threw (e.g. refresh failed), or retry still fails
+            } catch (retryError: any) { // This catch is for errors from await refreshPromise or the subsequent $fetch
+                 // If refreshPromise threw (e.g. refresh failed), it's already a createError from above.
                 // console.error(`Retry failed for ${currentPath} after token refresh attempt:`, retryError);
                 // If it's the specific error from refreshPromise, it's already a createError
                 if (retryError.statusCode === 401 && retryError.message === 'Session expired. Please log in again.') {

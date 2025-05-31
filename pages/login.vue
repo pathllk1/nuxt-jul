@@ -74,12 +74,13 @@ import { ref } from 'vue';
 import { useRouter } from 'vue-router'; // Or useNuxtApp().$router for Nuxt 3
 import { useState } from '#app'; // Import useState
 
-// Define User interface
-interface User {
+// Define AuthUser interface
+export interface AuthUser { // Export if it were to be shared, local for now
   id: number;
   username: string;
   email: string;
   role: 'user' | 'admin';
+  accessTokenExpiresAt?: number | null; // Milliseconds UTC
 }
 
 const email = ref('');
@@ -88,18 +89,18 @@ const errorMessage = ref('');
 const isLoading = ref(false);
 
 const router = useRouter(); // Nuxt 3: const router = useRouter(); is correct.
-const userAuthState = useState<User | null>('user_auth_state', () => null); // Define userAuthState
+const userAuthState = useState<AuthUser | null>('user_auth_state', () => null); // Use AuthUser
 
 async function handleLogin() {
   isLoading.value = true;
   errorMessage.value = '';
 
   try {
-    // Define expected response structure
+    // Define expected response structure from API
     interface LoginResponse {
       message: string;
-      user: User;
-      // token?: string; // If token were returned in body
+      user: { id: number; username: string; email: string; role: 'user' | 'admin'; }; // Core user fields from API
+      accessTokenExpiresAt: number; // Expecting this from API
     }
 
     const response = await $fetch<LoginResponse>('/api/auth/login', {
@@ -113,12 +114,15 @@ async function handleLogin() {
     // console.log('Login successful:', response);
 
     // ** CRUCIAL FIX: Update client-side auth state **
-    if (response && response.user) {
-      userAuthState.value = response.user;
+    if (response && response.user && typeof response.accessTokenExpiresAt === 'number') {
+      userAuthState.value = {
+        ...response.user, // Spread the user properties
+        accessTokenExpiresAt: response.accessTokenExpiresAt, // Add the expiry time
+      };
     } else {
-      // This case should ideally not happen if API guarantees user object on success
-      console.error('Login response did not include user data.');
-      errorMessage.value = 'Login succeeded but user data was not received. Please try again.';
+      // This case should ideally not happen if API guarantees user object and expiry on success
+      console.error('Login response did not include user data or expiry time.');
+      errorMessage.value = 'Login failed: Incomplete user data received.';
       isLoading.value = false; // Stop loading before early return
       return;
     }

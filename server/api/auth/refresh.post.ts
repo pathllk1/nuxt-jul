@@ -73,6 +73,10 @@ export default defineEventHandler(async (event) => {
     // 2. Update DB with new refresh token & expiry for this user
     // 3. Set new refresh_auth_token cookie with the new refresh token & new MaxAge
 
+    const nowInSeconds = Math.floor(Date.now() / 1000);
+    const accessTokenExpiresInSeconds = ACCESS_TOKEN_TTL_SECONDS; // Defined at top of file
+    const newAccessTokenActualExpiryTimestampSeconds = nowInSeconds + accessTokenExpiresInSeconds;
+
     const accessTokenPayload = {
       id: user.id,
       username: user.username,
@@ -80,19 +84,22 @@ export default defineEventHandler(async (event) => {
       role: user.role,
     };
     const newAccessToken = jwt.sign(accessTokenPayload, JWT_SECRET, {
-      expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+      expiresIn: accessTokenExpiresInSeconds,
     });
 
     setCookie(event, 'auth_token', newAccessToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
-      maxAge: ACCESS_TOKEN_TTL_SECONDS,
+      maxAge: accessTokenExpiresInSeconds, // Use the variable for consistency
       path: '/',
     });
 
+    // (If implementing refresh token rotation, new refresh token cookie would be set here too)
+
     return {
       message: 'Access token refreshed successfully.',
+      newAccessTokenExpiresAt: newAccessTokenActualExpiryTimestampSeconds * 1000, // Convert to milliseconds
       // Do NOT return tokens in the body. Client will use the new cookie.
     };
 

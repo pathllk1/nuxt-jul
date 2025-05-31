@@ -38,14 +38,19 @@ export default defineEventHandler(async (event) => {
     }
 
     // --- Generate Access Token (JWT) ---
+    const nowInSeconds = Math.floor(Date.now() / 1000);
+    const accessTokenExpiresInSeconds = ACCESS_TOKEN_TTL_SECONDS; // Defined at top of file
+    const accessTokenActualExpiryTimestampSeconds = nowInSeconds + accessTokenExpiresInSeconds;
+
     const accessTokenPayload = {
       id: user.id,
       username: user.username,
       email: user.email,
       role: user.role,
+      // exp: accessTokenActualExpiryTimestampSeconds, // jwt.sign handles 'exp' based on 'expiresIn'
     };
     const accessToken = jwt.sign(accessTokenPayload, JWT_SECRET, {
-      expiresIn: ACCESS_TOKEN_TTL_SECONDS,
+      expiresIn: accessTokenExpiresInSeconds, // Use the variable
     });
 
     // --- Generate Refresh Token (Secure Random String) ---
@@ -82,6 +87,7 @@ export default defineEventHandler(async (event) => {
     return {
       message: 'Login successful',
       user: userWithoutSensitiveData, // Return user data (excluding sensitive fields)
+      accessTokenExpiresAt: accessTokenActualExpiryTimestampSeconds * 1000, // Convert to milliseconds for client
       // Tokens are not returned in the body as they are in HttpOnly cookies
     };
 
